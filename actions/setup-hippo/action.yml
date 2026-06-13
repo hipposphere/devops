@@ -1,0 +1,137 @@
+name: Setup Hippo
+description: Install the Hippo CLI and optionally run common release setup tasks.
+
+inputs:
+  version:
+    description: Hippo CLI version to install.
+    required: false
+    default: "0.1.0"
+  artifact-base-url:
+    description: Base URL that hosts Hippo CLI release archives.
+    required: false
+    default: https://storage.dicto.org/artifacts
+  setup-dart:
+    description: Set up a Dart SDK for the consuming project.
+    required: false
+    default: "false"
+  dart-version:
+    description: Dart SDK version passed to dart-lang/setup-dart.
+    required: false
+    default: stable
+  setup-flutter:
+    description: Set up a Flutter SDK for the consuming project.
+    required: false
+    default: "false"
+  flutter-version:
+    description: Flutter SDK version passed to subosito/flutter-action.
+    required: false
+    default: stable
+  pub-get:
+    description: Run dart pub get or flutter pub get after SDK setup.
+    required: false
+    default: "false"
+  working-directory:
+    description: Directory where commands run.
+    required: false
+    default: "."
+  docker-image:
+    description: Generate a Dockerfile for this image key from docker.yaml.
+    required: false
+    default: ""
+  docker-config:
+    description: Path to docker.yaml.
+    required: false
+    default: docker.yaml
+  package-version-path:
+    description: Read package version outputs from this package path.
+    required: false
+    default: ""
+  command:
+    description: Hippo command arguments to run after setup.
+    required: false
+    default: ""
+
+outputs:
+  image:
+    description: Generated Docker image key.
+    value: ${{ steps.docker.outputs.image }}
+  dockerfile:
+    description: Generated Dockerfile path.
+    value: ${{ steps.docker.outputs.dockerfile }}
+  context:
+    description: Docker build context path.
+    value: ${{ steps.docker.outputs.context }}
+  version:
+    description: Package version from package-version-path.
+    value: ${{ steps.package-version.outputs.version }}
+  version-tag:
+    description: Tag-safe package version from package-version-path.
+    value: ${{ steps.package-version.outputs.version_tag }}
+  version_tag:
+    description: Tag-safe package version from package-version-path.
+    value: ${{ steps.package-version.outputs.version_tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Hippo CLI
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/hippo
+        key: hippo-cli-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install Hippo CLI
+      shell: bash
+      env:
+        HIPPO_VERSION: ${{ inputs.version }}
+        HIPPO_ARTIFACT_BASE_URL: ${{ inputs.artifact-base-url }}
+      run: bash "$GITHUB_ACTION_PATH/install.sh"
+
+    - name: Set up Dart
+      if: ${{ inputs.setup-dart == 'true' && inputs.setup-flutter != 'true' }}
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: ${{ inputs.dart-version }}
+
+    - name: Set up Flutter
+      if: ${{ inputs.setup-flutter == 'true' }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ inputs.flutter-version }}
+        cache: true
+
+    - name: Resolve dependencies
+      if: ${{ inputs.pub-get == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.setup-flutter }}" == "true" ]]; then
+          flutter pub get
+        else
+          dart pub get
+        fi
+
+    - name: Generate Dockerfile
+      id: docker
+      if: ${{ inputs.docker-image != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        hippo --ci release docker generate \
+          --config "${{ inputs.docker-config }}" \
+          --github-output \
+          "${{ inputs.docker-image }}"
+
+    - name: Read package version
+      id: package-version
+      if: ${{ inputs.package-version-path != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: hippo --ci release version --github-output "${{ inputs.package-version-path }}"
+
+    - name: Run Hippo command
+      if: ${{ inputs.command != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: hippo --ci ${{ inputs.command }}
