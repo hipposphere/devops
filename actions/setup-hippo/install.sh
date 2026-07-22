@@ -2,7 +2,7 @@
 set -euo pipefail
 
 version="${HIPPO_VERSION:-}"
-base_url="${HIPPO_ARTIFACT_BASE_URL:-https://storage.dicto.org/artifacts}"
+base_url="${HIPPO_ARTIFACT_BASE_URL:-}"
 
 if [[ -z "$version" ]]; then
   echo "::error::Set the setup-hippo 'version' input."
@@ -49,7 +49,11 @@ fi
 
 mkdir -p "$install_dir" "$download_dir" "$extract_dir"
 
-url="${base_url%/}/$archive"
+if [[ -n "$base_url" ]]; then
+  url="${base_url%/}/$archive"
+else
+  url="https://github.com/hipposphere/native-artifacts/releases/download/hippo_cli-native-v$version/$archive"
+fi
 archive_path="$download_dir/$archive"
 
 echo "Installing $archive"

@@ -29,7 +29,7 @@ steps:
   - id: hippo
     uses: hipposphere/devops/actions/setup-hippo@main
     with:
-      version: 0.1.0
+      version: 0.1.1
       docker-image: app
       package-version-path: packages/app
 ```
@@ -46,7 +46,7 @@ Flutter projects can also set up Flutter and resolve dependencies:
 ```yaml
 - uses: hipposphere/devops/actions/setup-hippo@main
   with:
-    version: 0.1.0
+    version: 0.1.1
     setup-flutter: "true"
     flutter-version: 3.44.0
     pub-get: "true"
@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: hipposphere/devops/actions/build-docker-image@main
         with:
-          hippo_version: 0.1.0
+          hippo_version: 0.1.1
           package_path: packages/app
           image: app
           image_name: my-app
@@ -96,7 +96,7 @@ jobs:
     steps:
       - uses: hipposphere/devops/actions/release-flutter@main
         with:
-          hippo_version: 0.1.0
+          hippo_version: 0.1.1
           target: ios_app_store
           setup_ios_signing: "true"
           publish_ios_app_store: "true"

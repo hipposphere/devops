@@ -5,11 +5,11 @@ inputs:
   version:
     description: Hippo CLI version to install.
     required: false
-    default: "0.1.0"
+    default: "0.1.1"
   artifact-base-url:
-    description: Base URL that hosts Hippo CLI release archives.
+    description: Optional base URL that hosts Hippo CLI release archives. Leave empty to use the public GitHub Release.
     required: false
-    default: https://storage.dicto.org/artifacts
+    default: ""
   setup-dart:
     description: Set up a Dart SDK for the consuming project.
     required: false
