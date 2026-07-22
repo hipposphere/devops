@@ -50,7 +50,7 @@ inputs:
   hippo_version:
     description: Hippo CLI version to install.
     required: false
-    default: "0.1.1"
+    default: "0.1.2"
   devops_ref:
     description: Ref of hipposphere/devops to check out for local actions.
     required: false
