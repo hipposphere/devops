@@ -1,10 +1,10 @@
 # Hipposphere DevOps
 
-Reusable GitHub Actions and workflows for Hipposphere projects and other repos
+Reusable GitHub Actions for Hipposphere projects and other repos
 that want to share Hipposphere release automation.
 
-The workflows in this repository are meant to be called from consuming project
-repositories. They install and call the Hippo CLI released from
+The actions in this repository are used as steps in consuming project workflows.
+They install and call the Hippo CLI released from
 `hipposphere/packages`:
 
 ```sh
@@ -13,9 +13,8 @@ hippo release version packages/app
 hippo release flutter build ios_app_store
 ```
 
-Reusable workflows check out this repository internally before calling local
-composite actions, so callers only need to reference the workflow path with a
-ref.
+The release actions check out the consuming repository themselves. Configure
+the runner, GitHub environment, and permissions on the calling job.
 
 ## Setup Hippo
 
@@ -55,23 +54,28 @@ Flutter projects can also set up Flutter and resolve dependencies:
 
 ## Build Docker Image
 
-Call the reusable workflow from a project repo to build a Docker image from
+Use the action from a project workflow to build a Docker image from
 `docker.yaml` and publish it to GHCR, upload it as a workflow artifact, or copy
 the archive to a server over SSH.
 
 ```yaml
 jobs:
   app-image:
-    uses: hipposphere/devops/.github/workflows/build-docker-image.yml@main
-    with:
-      hippo_version: 0.1.0
-      package_path: packages/app
-      image: app
-      image_name: my-app
-      output: ghcr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: hipposphere/devops/actions/build-docker-image@main
+        with:
+          hippo_version: 0.1.0
+          package_path: packages/app
+          image: app
+          image_name: my-app
+          output: ghcr
 ```
 
-The workflow publishes these tags for `output: ghcr`:
+The action publishes these tags for `output: ghcr`:
 
 - `ghcr.io/<owner>/<image_name>:<version-tag>`
 - `ghcr.io/<owner>/<image_name>:latest`
@@ -79,23 +83,32 @@ The workflow publishes these tags for `output: ghcr`:
 
 ## Release Flutter
 
-Call the generic Flutter release workflow from a project repo for one configured
+Use the generic Flutter release action from a project workflow for one configured
 target from `flutter_release.yaml`.
 
 ```yaml
 jobs:
   ios:
-    uses: hipposphere/devops/.github/workflows/release-flutter.yml@main
-    with:
-      hippo_version: 0.1.0
-      target: ios_app_store
-      runner: macos-15
-      setup_ios_signing: true
-      publish_ios_app_store: true
-    secrets: inherit
+    runs-on: macos-15
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: hipposphere/devops/actions/release-flutter@main
+        with:
+          hippo_version: 0.1.0
+          target: ios_app_store
+          setup_ios_signing: "true"
+          publish_ios_app_store: "true"
+          app_store_connect_key_id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          app_store_connect_private_key: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          ios_distribution_certificate_base64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          ios_distribution_certificate_password: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          ios_provisioning_profiles_base64: ${{ secrets.IOS_PROVISIONING_PROFILES_BASE64 }}
 ```
 
-The workflow builds with:
+The action builds with:
 
 ```sh
 hippo release flutter build --github-output <target>

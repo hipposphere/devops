@@ -1,0 +1,215 @@
+name: Build Docker Image
+description: Build a Hippo Docker image and publish it to GHCR, upload it as an artifact, or upload it over SSH.
+
+inputs:
+  package_path:
+    description: Path to the Dart package whose pubspec.yaml provides the image version.
+    required: true
+  image:
+    description: Docker image target from docker.yaml.
+    required: true
+  image_name:
+    description: GHCR image name without registry or owner.
+    required: true
+  output:
+    description: "Image output mode: ghcr, artifact, or ssh-upload."
+    required: false
+    default: ghcr
+  platforms:
+    description: Target Docker platforms.
+    required: false
+    default: linux/amd64
+  cache_scope:
+    description: GitHub Actions cache scope for Docker layers. Defaults to image_name.
+    required: false
+    default: ""
+  docker_config:
+    description: Path to docker.yaml.
+    required: false
+    default: docker.yaml
+  artifact_name:
+    description: Archive name for artifact uploads and ssh-upload temporary files.
+    required: false
+    default: docker-image
+  ssh_host:
+    description: SSH host for output=ssh-upload.
+    required: false
+    default: ""
+  ssh_port:
+    description: SSH port for output=ssh-upload.
+    required: false
+    default: "22"
+  ssh_username:
+    description: SSH username for output=ssh-upload.
+    required: false
+    default: ""
+  remote_image_archive:
+    description: Absolute path on the remote server for the uploaded docker archive.
+    required: false
+    default: ""
+  hippo_version:
+    description: Hippo CLI version to install.
+    required: false
+    default: "0.1.0"
+  devops_ref:
+    description: Ref of hipposphere/devops to check out for local actions.
+    required: false
+    default: main
+  ssh_key:
+    description: SSH private key for output=ssh-upload.
+    required: false
+    default: ""
+  ssh_password:
+    description: SSH password for output=ssh-upload.
+    required: false
+    default: ""
+
+outputs:
+  image:
+    description: Fully qualified image name.
+    value: ${{ steps.metadata.outputs.image }}
+  version_tag:
+    description: Version tag resolved from the package pubspec.yaml.
+    value: ${{ steps.hippo.outputs.version_tag }}
+  artifact_name:
+    description: Uploaded workflow artifact name when output=artifact.
+    value: ${{ inputs.artifact_name }}
+  remote_image_archive:
+    description: Remote docker archive path when output=ssh-upload.
+    value: ${{ steps.remote-archive.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check out project
+      uses: actions/checkout@v5
+
+    - name: Check out devops actions
+      uses: actions/checkout@v5
+      with:
+        repository: hipposphere/devops
+        ref: ${{ inputs.devops_ref }}
+        path: .devops
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Set up Hippo
+      id: hippo
+      uses: ./.devops/actions/setup-hippo
+      with:
+        version: ${{ inputs.hippo_version }}
+        docker-image: ${{ inputs.image }}
+        docker-config: ${{ inputs.docker_config }}
+        package-version-path: ${{ inputs.package_path }}
+
+    - name: Remove devops checkout
+      shell: bash
+      run: rm -rf .devops
+
+    - name: Read image metadata
+      id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        cache_scope="${{ inputs.cache_scope }}"
+        if [[ -z "$cache_scope" ]]; then
+          cache_scope="${{ inputs.image_name }}"
+        fi
+        echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ inputs.image_name }}" >> "$GITHUB_OUTPUT"
+        echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+        echo "cache_scope=$cache_scope" >> "$GITHUB_OUTPUT"
+
+    - name: Validate output mode
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${{ inputs.output }}" in ghcr|artifact|ssh-upload) ;; *) echo "::error::inputs.output must be ghcr, artifact, or ssh-upload."; exit 1;; esac
+        if [[ "${{ inputs.output }}" == "ssh-upload" && ( -z "${{ inputs.ssh_host }}" || -z "${{ inputs.ssh_username }}" ) ]]; then
+          echo "::error::ssh_host and ssh_username are required for output=ssh-upload."
+          exit 1
+        fi
+
+    - name: Log in to GitHub Container Registry
+      if: ${{ inputs.output == 'ghcr' }}
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build and publish image
+      if: ${{ inputs.output == 'ghcr' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker buildx build "${{ steps.hippo.outputs.context }}" --file "${{ steps.hippo.outputs.dockerfile }}" --push --platform "${{ inputs.platforms }}" --tag "${{ steps.metadata.outputs.image }}:${{ steps.hippo.outputs.version_tag }}" --tag "${{ steps.metadata.outputs.image }}:latest" --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" --cache-from "type=gha,scope=${{ steps.metadata.outputs.cache_scope }}" --cache-to "type=gha,scope=${{ steps.metadata.outputs.cache_scope }},mode=max" --build-arg "VERSION=${{ steps.hippo.outputs.version }}" --build-arg "REVISION=${{ github.sha }}" --build-arg "CREATED=${{ steps.metadata.outputs.created }}" --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
+
+    - name: Build image archive
+      if: ${{ inputs.output == 'artifact' || inputs.output == 'ssh-upload' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.platforms }}" == *","* ]]; then echo "::error::Docker image archives support one platform. Set inputs.platforms to a single platform."; exit 1; fi
+        mkdir -p artifacts
+        docker buildx build "${{ steps.hippo.outputs.context }}" --file "${{ steps.hippo.outputs.dockerfile }}" --output "type=docker,dest=artifacts/${{ inputs.artifact_name }}.tar" --platform "${{ inputs.platforms }}" --tag "${{ steps.metadata.outputs.image }}:${{ steps.hippo.outputs.version_tag }}" --tag "${{ steps.metadata.outputs.image }}:latest" --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" --cache-from "type=gha,scope=${{ steps.metadata.outputs.cache_scope }}" --cache-to "type=gha,scope=${{ steps.metadata.outputs.cache_scope }},mode=max" --build-arg "VERSION=${{ steps.hippo.outputs.version }}" --build-arg "REVISION=${{ github.sha }}" --build-arg "CREATED=${{ steps.metadata.outputs.created }}" --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
+        gzip -f "artifacts/${{ inputs.artifact_name }}.tar"
+
+    - name: Upload image artifact
+      if: ${{ inputs.output == 'artifact' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: artifacts/${{ inputs.artifact_name }}.tar.gz
+        if-no-files-found: error
+
+    - name: Resolve remote image archive
+      id: remote-archive
+      if: ${{ inputs.output == 'ssh-upload' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        path="${{ inputs.remote_image_archive }}"
+        if [[ -z "$path" ]]; then path="/tmp/${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz"; fi
+        if [[ "$path" != /* ]]; then echo "::error::inputs.remote_image_archive must be an absolute path."; exit 1; fi
+        echo "path=$path" >> "$GITHUB_OUTPUT"
+        echo "dir=$(dirname "$path")" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare remote image archive directory
+      if: ${{ inputs.output == 'ssh-upload' }}
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        script: mkdir -p "${{ steps.remote-archive.outputs.dir }}"
+
+    - name: Upload image archive to remote server
+      if: ${{ inputs.output == 'ssh-upload' }}
+      uses: appleboy/scp-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        source: artifacts/${{ inputs.artifact_name }}.tar.gz
+        strip_components: 1
+        target: ${{ steps.remote-archive.outputs.dir }}
+
+    - name: Move image archive into place
+      if: ${{ inputs.output == 'ssh-upload' }}
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        script: |
+          set -e
+          uploaded="${{ steps.remote-archive.outputs.dir }}/${{ inputs.artifact_name }}.tar.gz"
+          target="${{ steps.remote-archive.outputs.path }}"
+          if [ "$uploaded" != "$target" ]; then mv "$uploaded" "$target"; fi
