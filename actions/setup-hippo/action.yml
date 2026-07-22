@@ -5,7 +5,7 @@ inputs:
   version:
     description: Hippo CLI version to install.
     required: false
-    default: "0.1.1"
+    default: "0.1.3"
   artifact-base-url:
     description: Optional base URL that hosts Hippo CLI release archives. Leave empty to use the public GitHub Release.
     required: false
@@ -62,14 +62,14 @@ outputs:
     description: Docker build context path.
     value: ${{ steps.docker.outputs.context }}
   version:
-    description: Package version from package-version-path.
-    value: ${{ steps.package-version.outputs.version }}
+    description: Docker image version or package version from package-version-path.
+    value: ${{ steps.docker.outputs.version || steps.package-version.outputs.version }}
   version-tag:
-    description: Tag-safe package version from package-version-path.
-    value: ${{ steps.package-version.outputs.version_tag }}
+    description: Tag-safe Docker image version or package version from package-version-path.
+    value: ${{ steps.docker.outputs.version_tag || steps.package-version.outputs.version_tag }}
   version_tag:
-    description: Tag-safe package version from package-version-path.
-    value: ${{ steps.package-version.outputs.version_tag }}
+    description: Tag-safe Docker image version or package version from package-version-path.
+    value: ${{ steps.docker.outputs.version_tag || steps.package-version.outputs.version_tag }}
 
 runs:
   using: composite

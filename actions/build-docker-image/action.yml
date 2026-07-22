@@ -2,9 +2,6 @@ name: Build Docker Image
 description: Build a Hippo Docker image and publish it to GHCR, upload it as an artifact, or upload it over SSH.
 
 inputs:
-  package_path:
-    description: Path to the Dart package whose pubspec.yaml provides the image version.
-    required: true
   image:
     description: Docker image target from docker.yaml.
     required: true
@@ -50,7 +47,7 @@ inputs:
   hippo_version:
     description: Hippo CLI version to install.
     required: false
-    default: "0.1.1"
+    default: "0.1.3"
   devops_ref:
     description: Ref of hipposphere/devops to check out for local actions.
     required: false
@@ -69,7 +66,7 @@ outputs:
     description: Fully qualified image name.
     value: ${{ steps.metadata.outputs.image }}
   version_tag:
-    description: Version tag resolved from the package pubspec.yaml.
+    description: Version tag resolved from the selected Docker image package.
     value: ${{ steps.hippo.outputs.version_tag }}
   artifact_name:
     description: Uploaded workflow artifact name when output=artifact.
@@ -101,7 +98,6 @@ runs:
         version: ${{ inputs.hippo_version }}
         docker-image: ${{ inputs.image }}
         docker-config: ${{ inputs.docker_config }}
-        package-version-path: ${{ inputs.package_path }}
 
     - name: Remove devops checkout
       shell: bash

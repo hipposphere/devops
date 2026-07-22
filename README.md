@@ -5,7 +5,7 @@ that want to share Hipposphere release automation.
 
 The actions in this repository are used as steps in consuming project workflows.
 They install and call the Hippo CLI released from
-`hipposphere/packages`:
+`hipposphere/hippo-cli`:
 
 ```sh
 hippo release docker generate
@@ -19,7 +19,7 @@ the runner, GitHub environment, and permissions on the calling job.
 ## Setup Hippo
 
 Use `actions/setup-hippo` when a workflow needs the `hippo` binary from
-`hipposphere/packages`, generated Docker metadata, package version outputs, or a
+`hipposphere/hippo-cli`, generated Docker metadata, package version outputs, or a
 short Hippo command.
 
 ```yaml
@@ -29,9 +29,8 @@ steps:
   - id: hippo
     uses: hipposphere/devops/actions/setup-hippo@main
     with:
-      version: 0.1.1
+      version: 0.1.3
       docker-image: app
-      package-version-path: packages/app
 ```
 
 Useful outputs:
@@ -41,12 +40,16 @@ Useful outputs:
 - `version`: package version from `pubspec.yaml`
 - `version-tag`: tag-safe package version
 
+`setup-hippo` only generates Docker inputs. The consuming build action owns the
+subsequent `docker buildx build` invocation so it can select platforms, tags,
+caches, and its output mode.
+
 Flutter projects can also set up Flutter and resolve dependencies:
 
 ```yaml
 - uses: hipposphere/devops/actions/setup-hippo@main
   with:
-    version: 0.1.1
+    version: 0.1.3
     setup-flutter: "true"
     flutter-version: 3.44.0
     pub-get: "true"
@@ -68,8 +71,7 @@ jobs:
     steps:
       - uses: hipposphere/devops/actions/build-docker-image@main
         with:
-          hippo_version: 0.1.1
-          package_path: packages/app
+          hippo_version: 0.1.3
           image: app
           image_name: my-app
           output: ghcr
@@ -96,7 +98,7 @@ jobs:
     steps:
       - uses: hipposphere/devops/actions/release-flutter@main
         with:
-          hippo_version: 0.1.1
+          hippo_version: 0.1.3
           target: ios_app_store
           setup_ios_signing: "true"
           publish_ios_app_store: "true"
