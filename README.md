@@ -83,6 +83,39 @@ The action publishes these tags for `output: ghcr`:
 - `ghcr.io/<owner>/<image_name>:latest`
 - `ghcr.io/<owner>/<image_name>:sha-<commit-sha>`
 
+## Deploy Docker
+
+Use the deploy action to copy Compose configuration and optional environment or
+Docker image files to a server over SSH, then start the remote Compose stack.
+The calling workflow must check out the repository or otherwise prepare the
+configured source files before invoking the action.
+
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hipposphere/devops/actions/deploy-docker@main
+        with:
+          source: deploy
+          target: /home/deploy/app
+          ssh_host: ${{ vars.SSH_HOST }}
+          ssh_port: ${{ vars.SSH_PORT || '22' }}
+          ssh_username: ${{ vars.SSH_USERNAME }}
+          ssh_key: ${{ secrets.SSH_KEY }}
+          ssh_password: ${{ secrets.SSH_PASSWORD }}
+          env_file: ${{ secrets.APP_ENV }}
+          login_ghcr: "true"
+          ghcr_username: ${{ github.actor }}
+          ghcr_token: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ## Release Flutter
 
 Use the generic Flutter release action from a project workflow for one configured

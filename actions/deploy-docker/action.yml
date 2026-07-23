@@ -1,0 +1,200 @@
+name: Deploy Docker
+description: Upload a Docker image and deployment files, then run a remote Compose command.
+
+inputs:
+  source:
+    description: Files or folders to copy to the remote deployment directory.
+    required: true
+  strip_components:
+    description: Number of leading path components to strip while copying source files.
+    required: false
+    default: "1"
+  target:
+    description: Absolute deployment directory on the remote server.
+    required: true
+  ssh_host:
+    description: SSH host for the remote server.
+    required: true
+  ssh_port:
+    description: SSH port for the remote server.
+    required: false
+    default: "22"
+  ssh_username:
+    description: SSH username for the remote server.
+    required: true
+  ssh_key:
+    description: Private SSH key for the remote server.
+    required: false
+    default: ""
+  ssh_password:
+    description: SSH password for the remote server.
+    required: false
+    default: ""
+  image_archive:
+    description: Local .tar or .tar.gz Docker image archive to upload and load.
+    required: false
+    default: ""
+  compose_command:
+    description: Command to run in the remote deployment directory.
+    required: false
+    default: docker compose up -d --force-recreate
+  create_network:
+    description: Docker network to create before running the Compose command.
+    required: false
+    default: ""
+  env_file:
+    description: Optional .env file contents written with restricted permissions.
+    required: false
+    default: ""
+  login_ghcr:
+    description: Whether to log in to ghcr.io before deployment.
+    required: false
+    default: "false"
+  ghcr_username:
+    description: GHCR username used when login_ghcr is true.
+    required: false
+    default: ""
+  ghcr_token:
+    description: GHCR token used when login_ghcr is true.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Validate deployment inputs
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_PASSWORD: ${{ inputs.ssh_password }}
+        GHCR_USERNAME: ${{ inputs.ghcr_username }}
+        GHCR_TOKEN: ${{ inputs.ghcr_token }}
+      run: |
+        set -euo pipefail
+        if [ -z "$SSH_KEY" ] && [ -z "$SSH_PASSWORD" ]; then
+          echo "::error::Provide inputs.ssh_key or inputs.ssh_password."
+          exit 1
+        fi
+        if [ "${{ inputs.login_ghcr }}" = "true" ] && { [ -z "$GHCR_USERNAME" ] || [ -z "$GHCR_TOKEN" ]; }; then
+          echo "::error::Provide inputs.ghcr_username and inputs.ghcr_token when login_ghcr is true."
+          exit 1
+        fi
+        if [ -n "${{ inputs.image_archive }}" ] && [ ! -f "${{ inputs.image_archive }}" ]; then
+          echo "::error::Docker image archive not found: ${{ inputs.image_archive }}"
+          exit 1
+        fi
+
+    - name: Prepare image archive
+      if: ${{ inputs.image_archive != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        rm -rf deploy-artifacts
+        mkdir -p deploy-artifacts
+        case "${{ inputs.image_archive }}" in
+          *.tar.gz) cp "${{ inputs.image_archive }}" deploy-artifacts/docker-image.tar.gz ;;
+          *.tar) gzip -c "${{ inputs.image_archive }}" > deploy-artifacts/docker-image.tar.gz ;;
+          *)
+            echo "::error::inputs.image_archive must end in .tar or .tar.gz."
+            exit 1
+            ;;
+        esac
+
+    - name: Clear old deployment directory
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        script: |
+          set -e
+          rm -rf "${{ inputs.target }}"
+          mkdir -p "${{ inputs.target }}"
+
+    - name: Copy deployment files
+      uses: appleboy/scp-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        source: ${{ inputs.source }}
+        strip_components: ${{ inputs.strip_components }}
+        target: ${{ inputs.target }}
+
+    - name: Copy image archive
+      if: ${{ inputs.image_archive != '' }}
+      uses: appleboy/scp-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        source: deploy-artifacts/docker-image.tar.gz
+        strip_components: "1"
+        target: ${{ inputs.target }}
+
+    - name: Write environment file
+      if: ${{ inputs.env_file != '' }}
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        script: |
+          set -e
+          umask 077
+          cat > "${{ inputs.target }}/.env" <<'ENVEOF'
+          ${{ inputs.env_file }}
+          ENVEOF
+
+    - name: Log in to GHCR
+      if: ${{ inputs.login_ghcr == 'true' }}
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        script: |
+          set -e
+          echo "${{ inputs.ghcr_token }}" | docker login ghcr.io -u "${{ inputs.ghcr_username }}" --password-stdin
+
+    - name: Load image archive
+      if: ${{ inputs.image_archive != '' }}
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        script: |
+          set -e
+          gzip -dc "${{ inputs.target }}/docker-image.tar.gz" | docker load
+          rm -f "${{ inputs.target }}/docker-image.tar.gz"
+
+    - name: Deploy Compose stack
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.ssh_host }}
+        port: ${{ inputs.ssh_port }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_key }}
+        password: ${{ inputs.ssh_password }}
+        script: |
+          set -e
+          cd "${{ inputs.target }}"
+          if [ -n "${{ inputs.create_network }}" ] && ! docker network ls --format '{{.Name}}' | grep -Fxq "${{ inputs.create_network }}"; then
+            docker network create "${{ inputs.create_network }}"
+          fi
+          ${{ inputs.compose_command }}
+          docker image prune -a -f
+          docker builder prune -f
