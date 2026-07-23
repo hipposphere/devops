@@ -79,7 +79,7 @@ jobs:
 
 The action publishes these tags for `output: ghcr`:
 
-- `ghcr.io/<owner>/<image_name>:<version-tag>`
+- `ghcr.io/<owner>/<image_name>:v<version-tag>`
 - `ghcr.io/<owner>/<image_name>:latest`
 - `ghcr.io/<owner>/<image_name>:sha-<commit-sha>`
 

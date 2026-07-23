@@ -66,8 +66,8 @@ outputs:
     description: Fully qualified image name.
     value: ${{ steps.metadata.outputs.image }}
   version_tag:
-    description: Version tag resolved from the selected Docker image package.
-    value: ${{ steps.hippo.outputs.version_tag }}
+    description: V-prefixed version tag resolved from the selected Docker image package.
+    value: ${{ steps.metadata.outputs.version_tag }}
   artifact_name:
     description: Uploaded workflow artifact name when output=artifact.
     value: ${{ inputs.artifact_name }}
@@ -113,6 +113,7 @@ runs:
           cache_scope="${{ inputs.image_name }}"
         fi
         echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ inputs.image_name }}" >> "$GITHUB_OUTPUT"
+        echo "version_tag=v${{ steps.hippo.outputs.version_tag }}" >> "$GITHUB_OUTPUT"
         echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
         echo "cache_scope=$cache_scope" >> "$GITHUB_OUTPUT"
 
@@ -139,7 +140,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        docker buildx build "${{ steps.hippo.outputs.context }}" --file "${{ steps.hippo.outputs.dockerfile }}" --push --platform "${{ inputs.platforms }}" --tag "${{ steps.metadata.outputs.image }}:${{ steps.hippo.outputs.version_tag }}" --tag "${{ steps.metadata.outputs.image }}:latest" --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" --cache-from "type=gha,scope=${{ steps.metadata.outputs.cache_scope }}" --cache-to "type=gha,scope=${{ steps.metadata.outputs.cache_scope }},mode=max" --build-arg "VERSION=${{ steps.hippo.outputs.version }}" --build-arg "REVISION=${{ github.sha }}" --build-arg "CREATED=${{ steps.metadata.outputs.created }}" --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
+        docker buildx build "${{ steps.hippo.outputs.context }}" --file "${{ steps.hippo.outputs.dockerfile }}" --push --platform "${{ inputs.platforms }}" --tag "${{ steps.metadata.outputs.image }}:${{ steps.metadata.outputs.version_tag }}" --tag "${{ steps.metadata.outputs.image }}:latest" --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" --cache-from "type=gha,scope=${{ steps.metadata.outputs.cache_scope }}" --cache-to "type=gha,scope=${{ steps.metadata.outputs.cache_scope }},mode=max" --build-arg "VERSION=${{ steps.hippo.outputs.version }}" --build-arg "REVISION=${{ github.sha }}" --build-arg "CREATED=${{ steps.metadata.outputs.created }}" --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
 
     - name: Build image archive
       if: ${{ inputs.output == 'artifact' || inputs.output == 'ssh-upload' }}
@@ -148,7 +149,7 @@ runs:
         set -euo pipefail
         if [[ "${{ inputs.platforms }}" == *","* ]]; then echo "::error::Docker image archives support one platform. Set inputs.platforms to a single platform."; exit 1; fi
         mkdir -p artifacts
-        docker buildx build "${{ steps.hippo.outputs.context }}" --file "${{ steps.hippo.outputs.dockerfile }}" --output "type=docker,dest=artifacts/${{ inputs.artifact_name }}.tar" --platform "${{ inputs.platforms }}" --tag "${{ steps.metadata.outputs.image }}:${{ steps.hippo.outputs.version_tag }}" --tag "${{ steps.metadata.outputs.image }}:latest" --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" --cache-from "type=gha,scope=${{ steps.metadata.outputs.cache_scope }}" --cache-to "type=gha,scope=${{ steps.metadata.outputs.cache_scope }},mode=max" --build-arg "VERSION=${{ steps.hippo.outputs.version }}" --build-arg "REVISION=${{ github.sha }}" --build-arg "CREATED=${{ steps.metadata.outputs.created }}" --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
+        docker buildx build "${{ steps.hippo.outputs.context }}" --file "${{ steps.hippo.outputs.dockerfile }}" --output "type=docker,dest=artifacts/${{ inputs.artifact_name }}.tar" --platform "${{ inputs.platforms }}" --tag "${{ steps.metadata.outputs.image }}:${{ steps.metadata.outputs.version_tag }}" --tag "${{ steps.metadata.outputs.image }}:latest" --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" --cache-from "type=gha,scope=${{ steps.metadata.outputs.cache_scope }}" --cache-to "type=gha,scope=${{ steps.metadata.outputs.cache_scope }},mode=max" --build-arg "VERSION=${{ steps.hippo.outputs.version }}" --build-arg "REVISION=${{ github.sha }}" --build-arg "CREATED=${{ steps.metadata.outputs.created }}" --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
         gzip -f "artifacts/${{ inputs.artifact_name }}.tar"
 
     - name: Upload image artifact
