@@ -26,6 +26,10 @@ inputs:
     description: Flutter SDK version passed to subosito/flutter-action.
     required: false
     default: stable
+  flutter-channel:
+    description: Flutter release channel passed to subosito/flutter-action.
+    required: false
+    default: stable
   pub-get:
     description: Run dart pub get or flutter pub get after SDK setup.
     required: false
@@ -97,6 +101,7 @@ runs:
       if: ${{ inputs.setup-flutter == 'true' }}
       uses: subosito/flutter-action@v2
       with:
+        channel: ${{ inputs.flutter-channel }}
         flutter-version: ${{ inputs.flutter-version }}
         cache: true
 

@@ -51,6 +51,7 @@ Flutter projects can also set up Flutter and resolve dependencies:
   with:
     version: 0.1.3
     setup-flutter: "true"
+    flutter-channel: stable
     flutter-version: 3.44.0
     pub-get: "true"
 ```
