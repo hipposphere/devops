@@ -1,0 +1,169 @@
+name: Publish Dart packages
+
+on:
+  workflow_call:
+    inputs:
+      package_scope:
+        description: Optional exact Melos package name to publish.
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: Validate packages and native assets without publishing or creating releases.
+        required: false
+        default: true
+        type: boolean
+      dart_version:
+        description: Dart SDK version passed to dart-lang/setup-dart.
+        required: false
+        default: "3.13.0"
+        type: string
+      pub_registry:
+        description: Pub registry used for authentication and publication.
+        required: false
+        default: https://pub.hippolabs.org
+        type: string
+      native_config:
+        description: Repository-relative native asset manifest path.
+        required: false
+        default: .hippo/native-assets.json
+        type: string
+      validation_script:
+        description: Optional Melos script run before publication.
+        required: false
+        default: ci
+        type: string
+      devops_ref:
+        description: hipposphere/devops ref used for the workflow's composite actions.
+        required: false
+        default: main
+        type: string
+    secrets:
+      pub_credentials:
+        description: Pub token for the configured registry. Required for a real publication.
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare_native_assets:
+    name: Resolve native assets
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.native.outputs.targets }}
+      missing_count: ${{ steps.native.outputs.missing_count }}
+      native_packages: ${{ steps.native.outputs.native_packages }}
+    steps:
+      - name: Check out package repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check out Hipposphere DevOps
+        uses: actions/checkout@v5
+        with:
+          repository: hipposphere/devops
+          ref: ${{ inputs.devops_ref }}
+          path: .devops
+
+      - name: Resolve missing native assets
+        id: native
+        uses: ./.devops/actions/resolve-native-assets
+        with:
+          config-path: ${{ inputs.native_config }}
+          package-scope: ${{ inputs.package_scope }}
+          dry-run: ${{ inputs.dry_run }}
+          github-token: ${{ github.token }}
+
+  build_native_assets:
+    name: Native ${{ matrix.target.package }} (${{ matrix.target.os }}-${{ matrix.target.arch }})
+    needs: prepare_native_assets
+    if: ${{ !inputs.dry_run && needs.prepare_native_assets.outputs.missing_count != '0' }}
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.prepare_native_assets.outputs.targets) }}
+    steps:
+      - name: Check out package repository
+        uses: actions/checkout@v5
+
+      - name: Check out Hipposphere DevOps
+        uses: actions/checkout@v5
+        with:
+          repository: hipposphere/devops
+          ref: ${{ inputs.devops_ref }}
+          path: .devops
+
+      - name: Build and upload native asset
+        uses: ./.devops/actions/build-native-asset
+        with:
+          target: ${{ toJson(matrix.target) }}
+          github-token: ${{ github.token }}
+
+  publish:
+    name: ${{ inputs.dry_run && 'Validate publication' || 'Publish packages' }}
+    needs:
+      - prepare_native_assets
+      - build_native_assets
+    if: ${{ always() && !cancelled() && needs.prepare_native_assets.result == 'success' && (needs.build_native_assets.result == 'success' || needs.build_native_assets.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out package repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ inputs.dart_version }}
+
+      - name: Configure Pub credentials
+        env:
+          PUB_TOKEN: ${{ secrets.pub_credentials }}
+          PUB_REGISTRY: ${{ inputs.pub_registry }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${PUB_TOKEN:-}" ]]; then
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "No Pub token supplied; continuing the dry run without registry credentials."
+              exit 0
+            fi
+            echo "::error::pub_credentials is required for publication."
+            exit 1
+          fi
+          dart pub token add "$PUB_REGISTRY" --env-var PUB_TOKEN
+
+      - name: Resolve Dart workspace
+        run: dart pub get
+
+      - name: Validate workspace
+        if: ${{ inputs.validation_script != '' }}
+        env:
+          VALIDATION_SCRIPT: ${{ inputs.validation_script }}
+        run: dart run melos run "$VALIDATION_SCRIPT"
+
+      - name: Publish Dart packages
+        env:
+          PACKAGE_SCOPE: ${{ inputs.package_scope }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          PUB_TOKEN: ${{ secrets.pub_credentials }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--no-private --yes)
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          else
+            args+=(--no-dry-run)
+          fi
+          if [[ -n "$PACKAGE_SCOPE" ]]; then
+            args+=(--scope "$PACKAGE_SCOPE")
+          fi
+          dart run melos publish "${args[@]}"

@@ -16,6 +16,81 @@ hippo release flutter build ios_app_store
 The release actions check out the consuming repository themselves. Configure
 the runner, GitHub environment, and permissions on the calling job.
 
+## Publish Dart Packages
+
+Use the reusable workflow to validate and publish a Dart Pub workspace. It can
+discover Rust-backed packages, build only missing native release assets, and
+wait for those assets before publishing to Pub.
+
+```yaml
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_scope:
+        required: false
+        default: ""
+      dry_run:
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    uses: hipposphere/devops/.github/workflows/publish-dart-packages.yml@main
+    with:
+      package_scope: ${{ inputs.package_scope }}
+      dry_run: ${{ inputs.dry_run }}
+      devops_ref: main
+    secrets:
+      pub_credentials: ${{ secrets.PUB_CREDENTIALS }}
+```
+
+Use a release tag such as `@v1` for both the reusable workflow reference and
+`devops_ref` once that tag exists. The caller must grant `contents: write`
+because a real release can create native GitHub releases and upload assets.
+Dry runs do not create releases or upload native assets.
+
+Native packages are declared in `.hippo/native-assets.json`. Repositories
+without this file skip native work automatically. See
+[`examples/native-assets.json`](examples/native-assets.json) for a complete
+example.
+
+```json
+{
+  "version": 1,
+  "packages": {
+    "dart_http_server_runtime": {
+      "crate": "packages/dart_http_server_runtime/rust/Cargo.toml",
+      "native_inputs": ["packages/dart_http_server_runtime/rust"],
+      "targets": ["linux-x64", "linux-arm64", "macos-arm64"],
+      "linux_packages": ["pkg-config"]
+    }
+  }
+}
+```
+
+Supported target names are `linux-x64`, `linux-arm64`, and `macos-arm64`.
+Optional package fields are:
+
+- `cargo_package`: Cargo package name when it differs from the Dart package.
+- `toolchain`: repository-relative `rust-toolchain.toml` override.
+- `library_base`: dynamic library basename without `lib` or its extension.
+- `linux_packages` and `macos_packages`: system packages installed before the
+  build.
+- `prepare_script`: repository-relative Bash script for package-specific native
+  preparation. It receives `NATIVE_PACKAGE`, `NATIVE_TARGET_OS`,
+  `NATIVE_TARGET_ARCH`, and `NATIVE_TARGET_TRIPLE`.
+
+Native releases use `<package>-native-v<cargo-version>` tags. Artifacts use
+`<package>-<cargo-version>-<os>-<arch>-<library>` names and include a matching
+`.sha256` file. If native inputs changed after the current native release tag,
+the workflow fails and requires a Cargo version bump instead of silently
+reusing stale binaries.
+
 ## Setup Hippo
 
 Use `actions/setup-hippo` when a workflow needs the `hippo` binary from

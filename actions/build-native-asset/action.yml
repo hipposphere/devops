@@ -1,0 +1,121 @@
+name: Build Dart native asset
+description: Build one resolved Rust native target and upload it to its GitHub release.
+
+inputs:
+  target:
+    description: JSON target emitted by resolve-native-assets.
+    required: true
+  github-token:
+    description: Token used to upload GitHub release assets.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Read native target
+      id: target
+      shell: bash
+      env:
+        NATIVE_TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        jq -e '
+          (.package | type == "string") and
+          (.version | type == "string") and
+          (.toolchain | type == "string") and
+          (.crate | type == "string") and
+          (.cargo_package | type == "string") and
+          (.triple | type == "string") and
+          (.artifact | type == "string") and
+          (.source | type == "string")
+        ' <<< "$NATIVE_TARGET" >/dev/null
+        while IFS=$'\t' read -r key value; do
+          echo "$key=$value" >> "$GITHUB_OUTPUT"
+        done < <(jq -r 'to_entries[] | select(.value | type == "string") | [.key, .value] | @tsv' <<< "$NATIVE_TARGET")
+        echo "linux_packages=$(jq -c '.linux_packages // []' <<< "$NATIVE_TARGET")" >> "$GITHUB_OUTPUT"
+        echo "macos_packages=$(jq -c '.macos_packages // []' <<< "$NATIVE_TARGET")" >> "$GITHUB_OUTPUT"
+
+    - name: Install Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "${{ steps.target.outputs.toolchain }}" \
+          --profile minimal \
+          --target "${{ steps.target.outputs.triple }}"
+
+    - name: Install Linux native dependencies
+      if: ${{ steps.target.outputs.os == 'linux' && steps.target.outputs.linux_packages != '[]' }}
+      shell: bash
+      env:
+        PACKAGES: ${{ steps.target.outputs.linux_packages }}
+      run: |
+        set -euo pipefail
+        packages=()
+        while IFS= read -r package; do packages+=("$package"); done < <(jq -r '.[]' <<< "$PACKAGES")
+        sudo apt-get update
+        sudo apt-get install -y -- "${packages[@]}"
+
+    - name: Install macOS native dependencies
+      if: ${{ steps.target.outputs.os == 'macos' && steps.target.outputs.macos_packages != '[]' }}
+      shell: bash
+      env:
+        PACKAGES: ${{ steps.target.outputs.macos_packages }}
+      run: |
+        set -euo pipefail
+        packages=()
+        while IFS= read -r package; do packages+=("$package"); done < <(jq -r '.[]' <<< "$PACKAGES")
+        brew install "${packages[@]}"
+
+    - name: Prepare package-specific native dependencies
+      if: ${{ steps.target.outputs.prepare_script != '' }}
+      shell: bash
+      env:
+        NATIVE_PACKAGE: ${{ steps.target.outputs.package }}
+        NATIVE_TARGET_OS: ${{ steps.target.outputs.os }}
+        NATIVE_TARGET_ARCH: ${{ steps.target.outputs.arch }}
+        NATIVE_TARGET_TRIPLE: ${{ steps.target.outputs.triple }}
+      run: bash "${{ steps.target.outputs.prepare_script }}"
+
+    - name: Build native library
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup run "${{ steps.target.outputs.toolchain }}" cargo build \
+          --release \
+          --manifest-path "${{ steps.target.outputs.crate }}" \
+          --package "${{ steps.target.outputs.cargo_package }}" \
+          --target "${{ steps.target.outputs.triple }}" \
+          --target-dir ".dart_tool/native-assets/${{ steps.target.outputs.package }}"
+
+    - name: Stage native artifact
+      shell: bash
+      run: |
+        set -euo pipefail
+        source="${{ steps.target.outputs.source }}"
+        artifact="${{ steps.target.outputs.artifact }}"
+        test -f "$source"
+        mkdir -p artifacts
+        cp "$source" "artifacts/$artifact"
+        (cd artifacts && shasum -a 256 "$artifact" > "$artifact.sha256")
+
+    - name: Upload native release artifact
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        package="${{ steps.target.outputs.package }}"
+        version="${{ steps.target.outputs.version }}"
+        artifact="${{ steps.target.outputs.artifact }}"
+        tag="$package-native-v$version"
+        files=("artifacts/$artifact" "artifacts/$artifact.sha256")
+
+        for attempt in 1 2 3 4 5; do
+          if gh release upload "$tag" "${files[@]}" --clobber; then
+            exit 0
+          fi
+          if [[ "$attempt" == 5 ]]; then
+            exit 1
+          fi
+          sleep "$((attempt * 5))"
+        done

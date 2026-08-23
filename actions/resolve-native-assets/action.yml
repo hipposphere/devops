@@ -1,0 +1,43 @@
+name: Resolve Dart native assets
+description: Validate native package versions and return a matrix containing only missing release assets.
+
+inputs:
+  config-path:
+    description: Repository-relative path to the native asset manifest.
+    required: false
+    default: .hippo/native-assets.json
+  package-scope:
+    description: Optional exact Dart package name selected for publication.
+    required: false
+    default: ""
+  dry-run:
+    description: Resolve and validate without creating GitHub releases.
+    required: false
+    default: "true"
+  github-token:
+    description: Token used to inspect and create GitHub releases.
+    required: true
+
+outputs:
+  targets:
+    description: JSON matrix of missing native targets.
+    value: ${{ steps.resolve.outputs.targets }}
+  missing_count:
+    description: Number of missing native target artifacts.
+    value: ${{ steps.resolve.outputs.missing_count }}
+  native_packages:
+    description: JSON array of selected native package names.
+    value: ${{ steps.resolve.outputs.native_packages }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      name: Resolve missing native assets
+      shell: bash
+      env:
+        NATIVE_CONFIG_PATH: ${{ inputs.config-path }}
+        NATIVE_PACKAGE_SCOPE: ${{ inputs.package-scope }}
+        NATIVE_DRY_RUN: ${{ inputs.dry-run }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/resolve.sh"

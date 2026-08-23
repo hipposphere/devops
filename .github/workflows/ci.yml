@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate JSON examples
+        run: jq -e . examples/*.json >/dev/null
+      - name: Validate shell syntax
+        run: bash -n actions/resolve-native-assets/resolve.sh tests/*.sh
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+      - name: Test native asset resolution
+        run: bash tests/resolve-native-assets-test.sh
