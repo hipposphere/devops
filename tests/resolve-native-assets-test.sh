@@ -39,6 +39,9 @@ EOF
 cat > "$fixture/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${FAKE_RELEASE_EXISTS:-false}" == "true" ]]; then
+  if [[ "$*" == *"--json assets,body"* ]]; then
+    printf '%s\n' '{"assets":[],"body":""}'
+  fi
   exit 0
 fi
 exit 1
@@ -56,6 +59,8 @@ chmod +x "$fixture/bin/gh"
   output="$fixture/output"
   : > "$output"
   PATH="$fixture/bin:$PATH" \
+    GITHUB_REPOSITORY=hippolabs-org/example \
+    GITHUB_REPOSITORY_OWNER=hippolabs-org \
     GITHUB_OUTPUT="$output" \
     NATIVE_CONFIG_PATH=native-assets.json \
     NATIVE_DRY_RUN=true \
@@ -64,10 +69,28 @@ chmod +x "$fixture/bin/gh"
   targets="$(sed -n 's/^targets=//p' "$output")"
   [[ "$(jq 'length' <<< "$targets")" == "3" ]]
   [[ "$(jq -r '.[0].package' <<< "$targets")" == "example_native" ]]
+  [[ "$(jq -r '.[0].release_owner' <<< "$targets")" == "hippolabs-org" ]]
+  [[ "$(jq -r '.[0].release_repository' <<< "$targets")" == "example" ]]
   [[ "$(sed -n 's/^missing_count=//p' "$output")" == "3" ]]
+
+  jq '.packages.example_native.release_repository = "native-artifacts"' \
+    native-assets.json > native-assets.central.json
+  : > "$output"
+  PATH="$fixture/bin:$PATH" \
+    GITHUB_REPOSITORY=hippolabs-org/example \
+    GITHUB_REPOSITORY_OWNER=hippolabs-org \
+    GITHUB_OUTPUT="$output" \
+    NATIVE_CONFIG_PATH=native-assets.central.json \
+    NATIVE_DRY_RUN=true \
+    bash "$devops_root/actions/resolve-native-assets/resolve.sh"
+  targets="$(sed -n 's/^targets=//p' "$output")"
+  [[ "$(jq -r '.[0].release_owner' <<< "$targets")" == "hippolabs-org" ]]
+  [[ "$(jq -r '.[0].release_repository' <<< "$targets")" == "native-artifacts" ]]
 
   : > "$output"
   PATH="$fixture/bin:$PATH" \
+    GITHUB_REPOSITORY=hippolabs-org/example \
+    GITHUB_REPOSITORY_OWNER=hippolabs-org \
     GITHUB_OUTPUT="$output" \
     NATIVE_CONFIG_PATH=native-assets.json \
     NATIVE_PACKAGE_SCOPE=another_package \
@@ -83,6 +106,8 @@ chmod +x "$fixture/bin/gh"
   if failure_output="$(
     PATH="$fixture/bin:$PATH" \
       FAKE_RELEASE_EXISTS=true \
+      GITHUB_REPOSITORY=hippolabs-org/example \
+      GITHUB_REPOSITORY_OWNER=hippolabs-org \
       GITHUB_OUTPUT="$output" \
       NATIVE_CONFIG_PATH=native-assets.json \
       NATIVE_DRY_RUN=true \

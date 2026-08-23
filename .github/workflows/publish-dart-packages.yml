@@ -42,6 +42,9 @@ on:
       pub_credentials:
         description: Pub token for the configured registry. Required for a real publication.
         required: false
+      native_artifacts_token:
+        description: Token with release write access when native assets use another repository.
+        required: false
 
 permissions:
   contents: write
@@ -74,7 +77,7 @@ jobs:
           config-path: ${{ inputs.native_config }}
           package-scope: ${{ inputs.package_scope }}
           dry-run: ${{ inputs.dry_run }}
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.native_artifacts_token || github.token }}
 
   build_native_assets:
     name: Native ${{ matrix.target.package }} (${{ matrix.target.os }}-${{ matrix.target.arch }})
@@ -100,7 +103,7 @@ jobs:
         uses: ./.devops/actions/build-native-asset
         with:
           target: ${{ toJson(matrix.target) }}
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.native_artifacts_token || github.token }}
 
   publish:
     name: ${{ inputs.dry_run && 'Validate publication' || 'Publish packages' }}

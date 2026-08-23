@@ -47,6 +47,7 @@ jobs:
       devops_ref: main
     secrets:
       pub_credentials: ${{ secrets.PUB_CREDENTIALS }}
+      native_artifacts_token: ${{ secrets.NATIVE_ARTIFACTS_TOKEN }}
 ```
 
 Use a release tag such as `@v1` for both the reusable workflow reference and
@@ -79,6 +80,9 @@ Optional package fields are:
 - `cargo_package`: Cargo package name when it differs from the Dart package.
 - `toolchain`: repository-relative `rust-toolchain.toml` override.
 - `library_base`: dynamic library basename without `lib` or its extension.
+- `release_owner` and `release_repository`: GitHub release destination. They
+  default to the calling repository. Cross-repository destinations require a
+  `native_artifacts_token` with release write access.
 - `linux_packages` and `macos_packages`: system packages installed before the
   build.
 - `prepare_script`: repository-relative Bash script for package-specific native

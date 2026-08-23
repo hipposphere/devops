@@ -27,7 +27,9 @@ runs:
           (.cargo_package | type == "string") and
           (.triple | type == "string") and
           (.artifact | type == "string") and
-          (.source | type == "string")
+          (.source | type == "string") and
+          (.release_owner | type == "string") and
+          (.release_repository | type == "string")
         ' <<< "$NATIVE_TARGET" >/dev/null
         while IFS=$'\t' read -r key value; do
           echo "$key=$value" >> "$GITHUB_OUTPUT"
@@ -108,10 +110,11 @@ runs:
         version="${{ steps.target.outputs.version }}"
         artifact="${{ steps.target.outputs.artifact }}"
         tag="$package-native-v$version"
+        repository="${{ steps.target.outputs.release_owner }}/${{ steps.target.outputs.release_repository }}"
         files=("artifacts/$artifact" "artifacts/$artifact.sha256")
 
         for attempt in 1 2 3 4 5; do
-          if gh release upload "$tag" "${files[@]}" --clobber; then
+          if gh release upload "$tag" --repo "$repository" "${files[@]}" --clobber; then
             exit 0
           fi
           if [[ "$attempt" == 5 ]]; then

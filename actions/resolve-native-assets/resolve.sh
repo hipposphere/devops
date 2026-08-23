@@ -5,6 +5,13 @@ set -euo pipefail
 config_path="${NATIVE_CONFIG_PATH:-.hippo/native-assets.json}"
 package_scope="${NATIVE_PACKAGE_SCOPE:-}"
 dry_run="${NATIVE_DRY_RUN:-true}"
+repository_context="${GITHUB_REPOSITORY:-}"
+repository_owner="${GITHUB_REPOSITORY_OWNER:-${repository_context%%/*}}"
+
+if [[ -z "$repository_context" || "$repository_context" != */* || -z "$repository_owner" ]]; then
+  echo "::error::GITHUB_REPOSITORY and its owner must identify the calling repository."
+  exit 1
+fi
 
 if [[ "$dry_run" != "true" && "$dry_run" != "false" ]]; then
   echo "::error::dry-run must be true or false."
@@ -91,15 +98,34 @@ while IFS= read -r package; do
 
   jq -cn --arg package "$package" '$package' >> "$packages_file"
   tag="$package-native-v$version"
+  release_owner="$(
+    jq -r --arg package "$package" \
+      '.packages[$package].release_owner // empty' "$config_path"
+  )"
+  if [[ -z "$release_owner" ]]; then
+    release_owner="$repository_owner"
+  fi
+  release_repository="$(
+    jq -r --arg package "$package" \
+      '.packages[$package].release_repository // empty' "$config_path"
+  )"
+  if [[ -z "$release_repository" ]]; then
+    release_repository="${repository_context#*/}"
+  fi
+  if [[ "$release_owner" == */* || -z "$release_owner" || "$release_repository" == */* || -z "$release_repository" ]]; then
+    echo "::error::release_owner and release_repository for $package must be non-empty GitHub name components."
+    exit 1
+  fi
+  release_repo="$release_owner/$release_repository"
   release_exists=false
   assets=""
-  if gh release view "$tag" >/dev/null 2>&1; then
+  if gh release view "$tag" --repo "$release_repo" >/dev/null 2>&1; then
     release_exists=true
-    assets="$(gh release view "$tag" --json assets --jq '.assets[].name')"
-
-    if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
-      git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
-    fi
+    release_json="$(
+      gh release view "$tag" --repo "$release_repo" --json assets,body
+    )"
+    assets="$(jq -r '.assets[].name' <<< "$release_json")"
+    release_body="$(jq -r '.body // ""' <<< "$release_json")"
 
     native_inputs=()
     while IFS= read -r native_input; do
@@ -111,7 +137,34 @@ while IFS= read -r package; do
         exit 1
       fi
     done
-    if ! git diff --quiet "$tag"...HEAD -- "${native_inputs[@]}"; then
+
+    source_repository="$(
+      sed -n 's/^Hippolabs-Native-Source-Repository: //p' <<< "$release_body" | head -1
+    )"
+    source_commit="$(
+      sed -n 's/^Hippolabs-Native-Source-Commit: //p' <<< "$release_body" | head -1
+    )"
+    if [[ -n "$source_repository" || -n "$source_commit" ]]; then
+      if [[ "$source_repository" != "$repository_context" || -z "$source_commit" ]]; then
+        echo "::error::$tag in $release_repo belongs to another source repository or has invalid provenance."
+        exit 1
+      fi
+      if ! git cat-file -e "$source_commit^{commit}" 2>/dev/null; then
+        git fetch origin "$source_commit"
+      fi
+      comparison_ref="$source_commit"
+    else
+      if [[ "$release_repo" != "$repository_context" ]]; then
+        echo "::error::$tag in $release_repo has no source provenance. Bump the Cargo version to create a traceable release."
+        exit 1
+      fi
+      if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+        git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+      fi
+      comparison_ref="$tag"
+    fi
+
+    if ! git diff --quiet "$comparison_ref"...HEAD -- "${native_inputs[@]}"; then
       echo "::error::Native inputs for $package changed after $tag. Bump the Cargo package version before publishing."
       exit 1
     fi
@@ -165,25 +218,47 @@ while IFS= read -r package; do
       --arg artifact "$artifact" \
       --arg source "$source" \
       --arg prepare_script "$prepare_script" \
+      --arg release_owner "$release_owner" \
+      --arg release_repository "$release_repository" \
       --argjson linux_packages "$linux_packages" \
       --argjson macos_packages "$macos_packages" \
       '{package:$package, version:$version, toolchain:$toolchain, crate:$crate,
         cargo_package:$cargo_package, os:$os, arch:$arch, triple:$triple,
         runner:$runner, library:$library, artifact:$artifact, source:$source,
-        prepare_script:$prepare_script, linux_packages:$linux_packages,
+        prepare_script:$prepare_script, release_owner:$release_owner,
+        release_repository:$release_repository, linux_packages:$linux_packages,
         macos_packages:$macos_packages}' >> "$targets_file"
   done
 
   if [[ "$package_missing" == "true" && "$release_exists" == "false" && "$dry_run" == "false" ]]; then
-    printf '%s\n' "$tag" >> "$releases_file"
+    jq -cn \
+      --arg tag "$tag" \
+      --arg repository "$release_repo" \
+      '{tag:$tag, repository:$repository}' >> "$releases_file"
   fi
 done < <(jq -r '.packages | keys[]' "$config_path")
 
 if [[ "$dry_run" == "false" ]]; then
-  while IFS= read -r tag; do
-    [[ -n "$tag" ]] || continue
-    gh release view "$tag" >/dev/null 2>&1 || \
-      gh release create "$tag" --target "$GITHUB_SHA" --title "$tag"
+  while IFS= read -r release; do
+    [[ -n "$release" ]] || continue
+    tag="$(jq -r '.tag' <<< "$release")"
+    repository="$(jq -r '.repository' <<< "$release")"
+    if gh release view "$tag" --repo "$repository" >/dev/null 2>&1; then
+      continue
+    fi
+    if [[ "$repository" == "$repository_context" ]]; then
+      target="$GITHUB_SHA"
+    else
+      target="$(gh repo view "$repository" --json defaultBranchRef --jq '.defaultBranchRef.name')"
+    fi
+    notes="$(printf '%s\n%s\n' \
+      "Hippolabs-Native-Source-Repository: $repository_context" \
+      "Hippolabs-Native-Source-Commit: $GITHUB_SHA")"
+    gh release create "$tag" \
+      --repo "$repository" \
+      --target "$target" \
+      --title "$tag" \
+      --notes "$notes"
   done < "$releases_file"
 fi
 
