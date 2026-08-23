@@ -33,7 +33,7 @@ on:
         default: ""
       dry_run:
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -49,6 +49,9 @@ jobs:
       pub_credentials: ${{ secrets.PUB_CREDENTIALS }}
       native_artifacts_token: ${{ secrets.NATIVE_ARTIFACTS_TOKEN }}
 ```
+
+Publication is the default. Set `dry_run: true` explicitly to validate without
+creating releases, building artifacts, or publishing packages.
 
 Use a release tag such as `@v1` for both the reusable workflow reference and
 `devops_ref` once that tag exists. The caller must grant `contents: write`

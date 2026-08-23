@@ -11,7 +11,7 @@ on:
       dry_run:
         description: Validate packages and native assets without publishing or creating releases.
         required: false
-        default: true
+        default: false
         type: boolean
       dart_version:
         description: Dart SDK version passed to dart-lang/setup-dart.
@@ -114,6 +114,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      PUB_TOKEN: ${{ secrets.pub_credentials }}
     steps:
       - name: Check out package repository
         uses: actions/checkout@v5
@@ -127,7 +129,6 @@ jobs:
 
       - name: Configure Pub credentials
         env:
-          PUB_TOKEN: ${{ secrets.pub_credentials }}
           PUB_REGISTRY: ${{ inputs.pub_registry }}
           DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
