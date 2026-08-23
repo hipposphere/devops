@@ -80,13 +80,16 @@ chmod +x "$fixture/bin/gh"
   git add .
   git commit -qm changed
 
-  if PATH="$fixture/bin:$PATH" \
-    FAKE_RELEASE_EXISTS=true \
-    GITHUB_OUTPUT="$output" \
-    NATIVE_CONFIG_PATH=native-assets.json \
-    NATIVE_DRY_RUN=true \
-    bash "$devops_root/actions/resolve-native-assets/resolve.sh"; then
+  if failure_output="$(
+    PATH="$fixture/bin:$PATH" \
+      FAKE_RELEASE_EXISTS=true \
+      GITHUB_OUTPUT="$output" \
+      NATIVE_CONFIG_PATH=native-assets.json \
+      NATIVE_DRY_RUN=true \
+      bash "$devops_root/actions/resolve-native-assets/resolve.sh" 2>&1
+  )"; then
     echo "Expected unchanged Cargo version validation to fail." >&2
     exit 1
   fi
+  grep -Fq 'Bump the Cargo package version before publishing.' <<< "$failure_output"
 )
