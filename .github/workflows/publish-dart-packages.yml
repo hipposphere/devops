@@ -33,6 +33,11 @@ on:
         required: false
         default: ci
         type: string
+      ubuntu_packages:
+        description: Optional space-separated apt packages required by validation build hooks.
+        required: false
+        default: ""
+        type: string
       devops_ref:
         description: hipposphere/devops ref used for the workflow's composite actions.
         required: false
@@ -121,6 +126,17 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Install validation system dependencies
+        if: ${{ inputs.ubuntu_packages != '' }}
+        env:
+          UBUNTU_PACKAGES: ${{ inputs.ubuntu_packages }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r -a packages <<< "$UBUNTU_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends "${packages[@]}"
 
       - name: Set up Dart
         uses: dart-lang/setup-dart@v1
