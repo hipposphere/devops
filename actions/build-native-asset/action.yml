@@ -45,6 +45,27 @@ runs:
           --profile minimal \
           --target "${{ steps.target.outputs.triple }}"
 
+    - name: Configure Android NDK toolchain
+      if: ${{ steps.target.outputs.os == 'android' }}
+      shell: bash
+      env:
+        RUST_TARGET: ${{ steps.target.outputs.triple }}
+      run: |
+        set -euo pipefail
+        : "${ANDROID_NDK_ROOT:?ANDROID_NDK_ROOT is required for Android native assets}"
+        host_tag="linux-x86_64"
+        clang_target="$RUST_TARGET"
+        if [[ "$RUST_TARGET" == "armv7-linux-androideabi" ]]; then
+          clang_target="armv7a-linux-androideabi"
+        fi
+        toolchain="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$host_tag/bin"
+        linker="$toolchain/${clang_target}24-clang"
+        test -x "$linker"
+        cargo_target="$(tr '[:lower:]-' '[:upper:]_' <<< "$RUST_TARGET")"
+        echo "CARGO_TARGET_${cargo_target}_LINKER=$linker" >> "$GITHUB_ENV"
+        echo "CC_${RUST_TARGET}=$linker" >> "$GITHUB_ENV"
+        echo "AR_${RUST_TARGET}=$toolchain/llvm-ar" >> "$GITHUB_ENV"
+
     - name: Install Linux native dependencies
       if: ${{ steps.target.outputs.os == 'linux' && steps.target.outputs.linux_packages != '[]' }}
       shell: bash
@@ -98,7 +119,11 @@ runs:
         test -f "$source"
         mkdir -p artifacts
         cp "$source" "artifacts/$artifact"
-        (cd artifacts && shasum -a 256 "$artifact" > "$artifact.sha256")
+        if command -v shasum >/dev/null 2>&1; then
+          (cd artifacts && shasum -a 256 "$artifact" > "$artifact.sha256")
+        else
+          (cd artifacts && sha256sum "$artifact" > "$artifact.sha256")
+        fi
 
     - name: Upload native release artifact
       shell: bash

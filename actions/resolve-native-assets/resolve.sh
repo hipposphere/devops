@@ -47,6 +47,24 @@ trap 'rm -f "$targets_file" "$packages_file" "$releases_file"' EXIT
 resolve_target() {
   local target_name="$1"
   case "$target_name" in
+    android-arm)
+      printf '%s\t%s\t%s\t%s\n' android arm armv7-linux-androideabi ubuntu-latest
+      ;;
+    android-arm64)
+      printf '%s\t%s\t%s\t%s\n' android arm64 aarch64-linux-android ubuntu-latest
+      ;;
+    android-x64)
+      printf '%s\t%s\t%s\t%s\n' android x64 x86_64-linux-android ubuntu-latest
+      ;;
+    ios-device-arm64)
+      printf '%s\t%s\t%s\t%s\n' ios arm64 aarch64-apple-ios macos-14
+      ;;
+    ios-simulator-arm64)
+      printf '%s\t%s\t%s\t%s\n' ios arm64 aarch64-apple-ios-sim macos-14
+      ;;
+    ios-simulator-x64)
+      printf '%s\t%s\t%s\t%s\n' ios x64 x86_64-apple-ios macos-15-intel
+      ;;
     linux-x64)
       printf '%s\t%s\t%s\t%s\n' linux x64 x86_64-unknown-linux-gnu ubuntu-latest
       ;;
@@ -55,6 +73,15 @@ resolve_target() {
       ;;
     macos-arm64)
       printf '%s\t%s\t%s\t%s\n' macos arm64 aarch64-apple-darwin macos-14
+      ;;
+    macos-x64)
+      printf '%s\t%s\t%s\t%s\n' macos x64 x86_64-apple-darwin macos-15-intel
+      ;;
+    windows-arm64)
+      printf '%s\t%s\t%s\t%s\n' windows arm64 aarch64-pc-windows-msvc windows-11-arm
+      ;;
+    windows-x64)
+      printf '%s\t%s\t%s\t%s\n' windows x64 x86_64-pc-windows-msvc windows-2025
       ;;
     *)
       echo "::error::Unsupported native target '$target_name'." >&2
@@ -192,11 +219,14 @@ while IFS= read -r package; do
   for target_name in "${package_targets[@]}"; do
     IFS=$'\t' read -r os arch triple runner < <(resolve_target "$target_name")
     case "$os" in
+      android) library="lib${library_base}.so" ;;
+      ios) library="lib${library_base}.a" ;;
       linux) library="lib${library_base}.so" ;;
       macos) library="lib${library_base}.dylib" ;;
+      windows) library="${library_base}.dll" ;;
     esac
 
-    artifact="$package-$version-$os-$arch-$library"
+    artifact="$package-$version-$target_name-$library"
     if grep -Fxq "$artifact" <<< "$assets" && grep -Fxq "$artifact.sha256" <<< "$assets"; then
       echo "Native artifact already exists: $artifact"
       continue
