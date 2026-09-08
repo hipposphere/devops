@@ -62,9 +62,10 @@ runs:
         linker="$toolchain/${clang_target}24-clang"
         test -x "$linker"
         cargo_target="$(tr '[:lower:]-' '[:upper:]_' <<< "$RUST_TARGET")"
+        cc_target="${RUST_TARGET//-/_}"
         echo "CARGO_TARGET_${cargo_target}_LINKER=$linker" >> "$GITHUB_ENV"
-        echo "CC_${RUST_TARGET}=$linker" >> "$GITHUB_ENV"
-        echo "AR_${RUST_TARGET}=$toolchain/llvm-ar" >> "$GITHUB_ENV"
+        echo "CC_${cc_target}=$linker" >> "$GITHUB_ENV"
+        echo "AR_${cc_target}=$toolchain/llvm-ar" >> "$GITHUB_ENV"
 
     - name: Install Linux native dependencies
       if: ${{ steps.target.outputs.os == 'linux' && steps.target.outputs.linux_packages != '[]' }}
