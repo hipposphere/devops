@@ -220,7 +220,7 @@ while IFS= read -r package; do
     IFS=$'\t' read -r os arch triple runner < <(resolve_target "$target_name")
     case "$os" in
       android) library="lib${library_base}.so" ;;
-      ios) library="lib${library_base}.a" ;;
+      ios) library="lib${library_base}.dylib" ;;
       linux) library="lib${library_base}.so" ;;
       macos) library="lib${library_base}.dylib" ;;
       windows) library="${library_base}.dll" ;;

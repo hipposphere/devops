@@ -90,7 +90,7 @@ chmod +x "$fixture/bin/gh"
   targets="$(sed -n 's/^targets=//p' "$output")"
   [[ "$(jq 'length' <<< "$targets")" == "12" ]]
   [[ "$(jq -r '.[] | select(.triple == "aarch64-apple-ios") | .artifact' <<< "$targets")" == \
-    "example_native-1.2.3-ios-device-arm64-libexample_native.a" ]]
+    "example_native-1.2.3-ios-device-arm64-libexample_native.dylib" ]]
   [[ "$(jq -r '.[] | select(.triple == "aarch64-linux-android") | .source' <<< "$targets")" == \
     ".dart_tool/native-assets/example_native/aarch64-linux-android/release/libexample_native.so" ]]
   [[ "$(jq -r '.[] | select(.triple == "x86_64-pc-windows-msvc") | .runner' <<< "$targets")" == \
