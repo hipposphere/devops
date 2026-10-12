@@ -17,7 +17,7 @@ EOF
 
 cat > "$fixture/repo/packages/example_native/rust/rust-toolchain.toml" <<'EOF'
 [toolchain]
-channel = "1.95.0"
+channel = "1.99.0"
 EOF
 
 cat > "$fixture/repo/packages/example_native/rust/src/lib.rs" <<'EOF'
