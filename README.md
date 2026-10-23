@@ -199,6 +199,23 @@ jobs:
           ghcr_token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+For a private target reached through an SSH gateway, add these inputs to the
+deploy action:
+
+```yaml
+ssh_proxy_host: ${{ vars.SSH_PROXY_HOST }}
+ssh_proxy_port: ${{ vars.SSH_PROXY_PORT || '22' }}
+ssh_proxy_username: ${{ vars.SSH_PROXY_USERNAME }}
+ssh_proxy_key: ${{ secrets.SSH_KEY }}
+ssh_key: ${{ secrets.DEPLOY_SSH_KEY || secrets.SSH_KEY }}
+```
+
+`ssh_host`, `ssh_port`, and `ssh_username` still identify the target server.
+The proxy key authenticates the gateway; `ssh_key` authenticates the target.
+Both file uploads and remote commands use the gateway. A gateway host requires
+its username and key. Leave all gateway credentials empty for direct SSH.
+Pin production callers to a tested commit of this action.
+
 ## Release Flutter
 
 Use the generic Flutter release action from a project workflow for one configured
