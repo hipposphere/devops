@@ -30,6 +30,22 @@ inputs:
     description: SSH password for the remote server.
     required: false
     default: ""
+  ssh_proxy_host:
+    description: Optional SSH gateway host. Leave empty for a direct connection.
+    required: false
+    default: ""
+  ssh_proxy_port:
+    description: SSH port on the gateway.
+    required: false
+    default: "22"
+  ssh_proxy_username:
+    description: SSH username on the gateway.
+    required: false
+    default: ""
+  ssh_proxy_key:
+    description: Private SSH key for the gateway, separate from the target key.
+    required: false
+    default: ""
   image_archive:
     description: Local .tar or .tar.gz Docker image archive to upload and load.
     required: false
@@ -65,14 +81,35 @@ runs:
     - name: Validate deployment inputs
       shell: bash
       env:
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        SSH_USERNAME: ${{ inputs.ssh_username }}
         SSH_KEY: ${{ inputs.ssh_key }}
         SSH_PASSWORD: ${{ inputs.ssh_password }}
+        SSH_PROXY_HOST: ${{ inputs.ssh_proxy_host }}
+        SSH_PROXY_USERNAME: ${{ inputs.ssh_proxy_username }}
+        SSH_PROXY_KEY: ${{ inputs.ssh_proxy_key }}
         GHCR_USERNAME: ${{ inputs.ghcr_username }}
         GHCR_TOKEN: ${{ inputs.ghcr_token }}
       run: |
         set -euo pipefail
+        for name in SSH_HOST SSH_PORT SSH_USERNAME; do
+          if [ -z "${!name}" ]; then
+            echo "::error::$name must be provided."
+            exit 1
+          fi
+        done
         if [ -z "$SSH_KEY" ] && [ -z "$SSH_PASSWORD" ]; then
           echo "::error::Provide inputs.ssh_key or inputs.ssh_password."
+          exit 1
+        fi
+        if [ -n "$SSH_PROXY_HOST" ]; then
+          if [ -z "$SSH_PROXY_USERNAME" ] || [ -z "$SSH_PROXY_KEY" ]; then
+            echo "::error::Provide inputs.ssh_proxy_username and inputs.ssh_proxy_key when ssh_proxy_host is set."
+            exit 1
+          fi
+        elif [ -n "$SSH_PROXY_USERNAME" ] || [ -n "$SSH_PROXY_KEY" ]; then
+          echo "::error::Provide inputs.ssh_proxy_host when configuring gateway credentials."
           exit 1
         fi
         if [ "${{ inputs.login_ghcr }}" = "true" ] && { [ -z "$GHCR_USERNAME" ] || [ -z "$GHCR_TOKEN" ]; }; then
@@ -108,6 +145,10 @@ runs:
         username: ${{ inputs.ssh_username }}
         key: ${{ inputs.ssh_key }}
         password: ${{ inputs.ssh_password }}
+        proxy_host: ${{ inputs.ssh_proxy_host }}
+        proxy_port: ${{ inputs.ssh_proxy_port }}
+        proxy_username: ${{ inputs.ssh_proxy_username }}
+        proxy_key: ${{ inputs.ssh_proxy_key }}
         script: |
           set -e
           rm -rf "${{ inputs.target }}"
@@ -121,6 +162,10 @@ runs:
         username: ${{ inputs.ssh_username }}
         key: ${{ inputs.ssh_key }}
         password: ${{ inputs.ssh_password }}
+        proxy_host: ${{ inputs.ssh_proxy_host }}
+        proxy_port: ${{ inputs.ssh_proxy_port }}
+        proxy_username: ${{ inputs.ssh_proxy_username }}
+        proxy_key: ${{ inputs.ssh_proxy_key }}
         source: ${{ inputs.source }}
         strip_components: ${{ inputs.strip_components }}
         target: ${{ inputs.target }}
@@ -134,6 +179,10 @@ runs:
         username: ${{ inputs.ssh_username }}
         key: ${{ inputs.ssh_key }}
         password: ${{ inputs.ssh_password }}
+        proxy_host: ${{ inputs.ssh_proxy_host }}
+        proxy_port: ${{ inputs.ssh_proxy_port }}
+        proxy_username: ${{ inputs.ssh_proxy_username }}
+        proxy_key: ${{ inputs.ssh_proxy_key }}
         source: deploy-artifacts/docker-image.tar.gz
         strip_components: "1"
         target: ${{ inputs.target }}
@@ -147,6 +196,10 @@ runs:
         username: ${{ inputs.ssh_username }}
         key: ${{ inputs.ssh_key }}
         password: ${{ inputs.ssh_password }}
+        proxy_host: ${{ inputs.ssh_proxy_host }}
+        proxy_port: ${{ inputs.ssh_proxy_port }}
+        proxy_username: ${{ inputs.ssh_proxy_username }}
+        proxy_key: ${{ inputs.ssh_proxy_key }}
         script: |
           set -e
           umask 077
@@ -163,6 +216,10 @@ runs:
         username: ${{ inputs.ssh_username }}
         key: ${{ inputs.ssh_key }}
         password: ${{ inputs.ssh_password }}
+        proxy_host: ${{ inputs.ssh_proxy_host }}
+        proxy_port: ${{ inputs.ssh_proxy_port }}
+        proxy_username: ${{ inputs.ssh_proxy_username }}
+        proxy_key: ${{ inputs.ssh_proxy_key }}
         script: |
           set -e
           echo "${{ inputs.ghcr_token }}" | docker login ghcr.io -u "${{ inputs.ghcr_username }}" --password-stdin
@@ -176,6 +233,10 @@ runs:
         username: ${{ inputs.ssh_username }}
         key: ${{ inputs.ssh_key }}
         password: ${{ inputs.ssh_password }}
+        proxy_host: ${{ inputs.ssh_proxy_host }}
+        proxy_port: ${{ inputs.ssh_proxy_port }}
+        proxy_username: ${{ inputs.ssh_proxy_username }}
+        proxy_key: ${{ inputs.ssh_proxy_key }}
         script: |
           set -e
           gzip -dc "${{ inputs.target }}/docker-image.tar.gz" | docker load
@@ -189,6 +250,10 @@ runs:
         username: ${{ inputs.ssh_username }}
         key: ${{ inputs.ssh_key }}
         password: ${{ inputs.ssh_password }}
+        proxy_host: ${{ inputs.ssh_proxy_host }}
+        proxy_port: ${{ inputs.ssh_proxy_port }}
+        proxy_username: ${{ inputs.ssh_proxy_username }}
+        proxy_key: ${{ inputs.ssh_proxy_key }}
         script: |
           set -e
           cd "${{ inputs.target }}"

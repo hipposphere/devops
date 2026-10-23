@@ -21,3 +21,8 @@ jobs:
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
       - name: Test native asset resolution
         run: bash tests/resolve-native-assets-test.sh
+      - name: Test Docker deployment transports
+        run: |
+          python3 -m venv "$RUNNER_TEMP/deploy-docker-tests"
+          "$RUNNER_TEMP/deploy-docker-tests/bin/pip" install PyYAML==6.0.2
+          "$RUNNER_TEMP/deploy-docker-tests/bin/python" tests/deploy-docker-test.py
