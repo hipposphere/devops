@@ -74,6 +74,11 @@ runs:
         if (-not (Test-Path $linker)) { throw "MSVC ARM64 linker missing: $linker" }
         "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=$linker" >> $env:GITHUB_ENV
 
+    - name: Configure macOS deployment target
+      if: ${{ steps.target.outputs.os == 'macos' }}
+      shell: bash
+      run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
+
     - name: Configure iOS SDK and deployment target
       if: ${{ steps.target.outputs.os == 'ios' }}
       shell: bash
