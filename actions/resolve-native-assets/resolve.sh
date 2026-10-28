@@ -5,6 +5,8 @@ set -euo pipefail
 config_path="${NATIVE_CONFIG_PATH:-.hippo/native-assets.json}"
 package_scope="${NATIVE_PACKAGE_SCOPE:-}"
 dry_run="${NATIVE_DRY_RUN:-true}"
+runner_overrides="${NATIVE_RUNNER_OVERRIDES:-}"
+if [[ -z "$runner_overrides" ]]; then runner_overrides='{}'; fi
 repository_context="${GITHUB_REPOSITORY:-}"
 repository_owner="${GITHUB_REPOSITORY_OWNER:-${repository_context%%/*}}"
 
@@ -17,6 +19,12 @@ if [[ "$dry_run" != "true" && "$dry_run" != "false" ]]; then
   echo "::error::dry-run must be true or false."
   exit 1
 fi
+
+jq -e 'type == "object" and all(.[]; type == "string" and length > 0)' \
+  <<< "$runner_overrides" >/dev/null || {
+  echo "::error::runner-overrides must be a JSON object of non-empty runner labels."
+  exit 1
+}
 
 if [[ ! -f "$config_path" ]]; then
   echo "No native asset manifest at $config_path; skipping native assets."
@@ -218,6 +226,7 @@ while IFS= read -r package; do
   package_missing=false
   for target_name in "${package_targets[@]}"; do
     IFS=$'\t' read -r os arch triple runner < <(resolve_target "$target_name")
+    runner="$(jq -r --arg runner "$runner" '.[$runner] // $runner' <<< "$runner_overrides")"
     case "$os" in
       android) library="lib${library_base}.so" ;;
       ios) library="lib${library_base}.dylib" ;;

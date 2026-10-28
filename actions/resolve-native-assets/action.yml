@@ -14,6 +14,10 @@ inputs:
     description: Resolve and validate without creating GitHub releases.
     required: false
     default: "true"
+  runner-overrides:
+    description: JSON object mapping default native runner labels to alternatives.
+    required: false
+    default: '{}'
   github-token:
     description: Token used to inspect and create GitHub releases.
     required: true
@@ -39,5 +43,6 @@ runs:
         NATIVE_CONFIG_PATH: ${{ inputs.config-path }}
         NATIVE_PACKAGE_SCOPE: ${{ inputs.package-scope }}
         NATIVE_DRY_RUN: ${{ inputs.dry-run }}
+        NATIVE_RUNNER_OVERRIDES: ${{ inputs.runner-overrides }}
         GH_TOKEN: ${{ inputs.github-token }}
       run: bash "$GITHUB_ACTION_PATH/resolve.sh"

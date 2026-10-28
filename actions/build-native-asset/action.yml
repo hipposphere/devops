@@ -45,6 +45,54 @@ runs:
           --profile minimal \
           --target "${{ steps.target.outputs.triple }}"
 
+    - name: Ensure Windows ARM64 cross compiler
+      if: ${{ runner.os == 'Windows' && runner.arch == 'X64' && steps.target.outputs.arch == 'arm64' }}
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installation = & $vswhere -latest -products '*' -property installationPath
+        if (-not $installation) { throw 'Visual Studio Build Tools are required.' }
+        $compiler = Get-ChildItem "$installation\VC\Tools\MSVC\*\bin\Hostx64\arm64\cl.exe" -ErrorAction SilentlyContinue
+        if (-not $compiler) {
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $arguments = @('modify', '--installPath', "`"$installation`"", '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64', '--quiet', '--norestart')
+          $process = Start-Process $installer -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -notin @(0, 3010)) { throw "ARM64 compiler installation failed: $($process.ExitCode)" }
+        }
+
+    - name: Configure Windows ARM64 cross compiler
+      if: ${{ runner.os == 'Windows' && runner.arch == 'X64' && steps.target.outputs.arch == 'arm64' }}
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64_arm64
+
+    - name: Select Windows ARM64 linker
+      if: ${{ runner.os == 'Windows' && runner.arch == 'X64' && steps.target.outputs.arch == 'arm64' }}
+      shell: pwsh
+      run: |
+        $linker = Join-Path $env:VCToolsInstallDir 'bin\Hostx64\arm64\link.exe'
+        if (-not (Test-Path $linker)) { throw "MSVC ARM64 linker missing: $linker" }
+        "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=$linker" >> $env:GITHUB_ENV
+
+    - name: Configure macOS deployment target
+      if: ${{ steps.target.outputs.os == 'macos' }}
+      shell: bash
+      run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
+
+    - name: Configure iOS SDK and deployment target
+      if: ${{ steps.target.outputs.os == 'ios' }}
+      shell: bash
+      env:
+        RUST_TARGET: ${{ steps.target.outputs.triple }}
+      run: |
+        set -euo pipefail
+        case "$RUST_TARGET" in
+          aarch64-apple-ios) sdk=iphoneos ;;
+          *) sdk=iphonesimulator ;;
+        esac
+        echo "SDKROOT=$(xcrun --sdk "$sdk" --show-sdk-path)" >> "$GITHUB_ENV"
+        echo "IPHONEOS_DEPLOYMENT_TARGET=13.0" >> "$GITHUB_ENV"
+
     - name: Configure Android NDK toolchain
       if: ${{ steps.target.outputs.os == 'android' }}
       shell: bash

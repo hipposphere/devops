@@ -58,6 +58,16 @@ Use a release tag such as `@v1` for both the reusable workflow reference and
 because a real release can create native GitHub releases and upload assets.
 Dry runs do not create releases or upload native assets.
 
+The optional `runner` input selects the runner for resolution and Dart
+publication. `native_runner_overrides` maps native build runner labels to
+alternatives, preserving each target triple and artifact name. For example,
+`runner: blacksmith-4vcpu-ubuntu-2404` with
+`native_runner_overrides: '{"ubuntu-latest":"blacksmith-4vcpu-ubuntu-2404"}'`
+routes Linux x64/Android builds and publication through Blacksmith. Unmapped
+labels keep their defaults. Cross-compiling runners must provide the target's
+compiler, SDK, and linker. iOS builds select the device/simulator SDK and target
+iOS 13.0 (macOS builds target 11.0); x64 Windows hosts initialize the MSVC ARM64 cross compiler when needed.
+
 Native packages are declared in `.hippo/native-assets.json`. Repositories
 without this file skip native work automatically. See
 [`examples/native-assets.json`](examples/native-assets.json) for a complete

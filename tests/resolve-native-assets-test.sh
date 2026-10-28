@@ -98,6 +98,32 @@ chmod +x "$fixture/bin/gh"
   [[ "$(jq -r '.[] | select(.triple == "aarch64-pc-windows-msvc") | .library' <<< "$targets")" == \
     "example_native.dll" ]]
 
+  : > "$output"
+  PATH="$fixture/bin:$PATH" \
+    GITHUB_REPOSITORY=hippolabs-org/example \
+    GITHUB_REPOSITORY_OWNER=hippolabs-org \
+    GITHUB_OUTPUT="$output" \
+    NATIVE_CONFIG_PATH=native-assets.all-platforms.json \
+    NATIVE_DRY_RUN=true \
+    NATIVE_RUNNER_OVERRIDES='{"macos-15-intel":"blacksmith-6vcpu-macos-15","windows-11-arm":"blacksmith-4vcpu-windows-2025"}' \
+    bash "$devops_root/actions/resolve-native-assets/resolve.sh"
+  targets="$(sed -n 's/^targets=//p' "$output")"
+  [[ "$(jq 'length' <<< "$targets")" == "12" ]]
+  [[ "$(jq -r '.[] | select(.triple == "x86_64-apple-darwin") | .runner' <<< "$targets")" == \
+    "blacksmith-6vcpu-macos-15" ]]
+  [[ "$(jq -r '.[] | select(.triple == "aarch64-pc-windows-msvc") | .runner' <<< "$targets")" == \
+    "blacksmith-4vcpu-windows-2025" ]]
+  [[ "$(jq -r '.[] | select(.triple == "x86_64-unknown-linux-gnu") | .runner' <<< "$targets")" == \
+    "ubuntu-latest" ]]
+  if PATH="$fixture/bin:$PATH" \
+    GITHUB_REPOSITORY=hippolabs-org/example \
+    GITHUB_OUTPUT="$output" \
+    NATIVE_RUNNER_OVERRIDES='{"ubuntu-latest":[]}' \
+    bash "$devops_root/actions/resolve-native-assets/resolve.sh"; then
+    echo "Expected invalid runner override validation to fail." >&2
+    exit 1
+  fi
+
   jq '.packages.example_native.release_repository = "native-artifacts"' \
     native-assets.json > native-assets.central.json
   : > "$output"
