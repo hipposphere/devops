@@ -45,6 +45,27 @@ runs:
           --profile minimal \
           --target "${{ steps.target.outputs.triple }}"
 
+    - name: Ensure Windows ARM64 cross compiler
+      if: ${{ runner.os == 'Windows' && runner.arch == 'X64' && steps.target.outputs.arch == 'arm64' }}
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installation = & $vswhere -latest -products '*' -property installationPath
+        if (-not $installation) { throw 'Visual Studio Build Tools are required.' }
+        $compiler = Get-ChildItem "$installation\VC\Tools\MSVC\*\bin\Hostx64\arm64\cl.exe" -ErrorAction SilentlyContinue
+        if (-not $compiler) {
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $arguments = @('modify', '--installPath', "`"$installation`"", '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64', '--quiet', '--norestart')
+          $process = Start-Process $installer -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -notin @(0, 3010)) { throw "ARM64 compiler installation failed: $($process.ExitCode)" }
+        }
+
+    - name: Configure Windows ARM64 cross compiler
+      if: ${{ runner.os == 'Windows' && runner.arch == 'X64' && steps.target.outputs.arch == 'arm64' }}
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64_arm64
+
     - name: Configure Android NDK toolchain
       if: ${{ steps.target.outputs.os == 'android' }}
       shell: bash
