@@ -66,6 +66,28 @@ runs:
       with:
         arch: amd64_arm64
 
+    - name: Select Windows ARM64 linker
+      if: ${{ runner.os == 'Windows' && runner.arch == 'X64' && steps.target.outputs.arch == 'arm64' }}
+      shell: pwsh
+      run: |
+        $linker = Join-Path $env:VCToolsInstallDir 'bin\Hostx64\arm64\link.exe'
+        if (-not (Test-Path $linker)) { throw "MSVC ARM64 linker missing: $linker" }
+        "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=$linker" >> $env:GITHUB_ENV
+
+    - name: Configure iOS SDK and deployment target
+      if: ${{ steps.target.outputs.os == 'ios' }}
+      shell: bash
+      env:
+        RUST_TARGET: ${{ steps.target.outputs.triple }}
+      run: |
+        set -euo pipefail
+        case "$RUST_TARGET" in
+          aarch64-apple-ios) sdk=iphoneos ;;
+          *) sdk=iphonesimulator ;;
+        esac
+        echo "SDKROOT=$(xcrun --sdk "$sdk" --show-sdk-path)" >> "$GITHUB_ENV"
+        echo "IPHONEOS_DEPLOYMENT_TARGET=13.0" >> "$GITHUB_ENV"
+
     - name: Configure Android NDK toolchain
       if: ${{ steps.target.outputs.os == 'android' }}
       shell: bash

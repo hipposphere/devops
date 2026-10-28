@@ -65,7 +65,8 @@ alternatives, preserving each target triple and artifact name. For example,
 `native_runner_overrides: '{"ubuntu-latest":"blacksmith-4vcpu-ubuntu-2404"}'`
 routes Linux x64/Android builds and publication through Blacksmith. Unmapped
 labels keep their defaults. Cross-compiling runners must provide the target's
-compiler, SDK, and linker.
+compiler, SDK, and linker. iOS builds select the device/simulator SDK and target
+iOS 13.0; x64 Windows hosts initialize the MSVC ARM64 cross compiler when needed.
 
 Native packages are declared in `.hippo/native-assets.json`. Repositories
 without this file skip native work automatically. See
