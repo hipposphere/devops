@@ -28,6 +28,21 @@ on:
         required: false
         default: "3.13.0"
         type: string
+      flutter_version:
+        description: Flutter SDK version for workspaces with Flutter packages. When set, Flutter replaces dart_version and resolves the workspace.
+        required: false
+        default: ""
+        type: string
+      flutter_channel:
+        description: Flutter channel of flutter_version (stable or beta).
+        required: false
+        default: stable
+        type: string
+      android_ndk_version:
+        description: Android NDK installed before Android native builds, for runners without ANDROID_NDK_ROOT.
+        required: false
+        default: ""
+        type: string
       pub_registry:
         description: Pub registry used for authentication and publication.
         required: false
@@ -115,6 +130,20 @@ jobs:
           ref: ${{ inputs.devops_ref }}
           path: .devops
 
+      - name: Set up Android NDK
+        id: ndk
+        if: ${{ inputs.android_ndk_version != '' && matrix.target.os == 'android' }}
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: ${{ inputs.android_ndk_version }}
+          add-to-path: false
+
+      - name: Export Android NDK root
+        if: ${{ steps.ndk.outcome == 'success' }}
+        env:
+          NDK_PATH: ${{ steps.ndk.outputs.ndk-path }}
+        run: echo "ANDROID_NDK_ROOT=$NDK_PATH" >> "$GITHUB_ENV"
+
       - name: Build and upload native asset
         uses: ./.devops/actions/build-native-asset
         with:
@@ -150,9 +179,18 @@ jobs:
           sudo apt-get install --yes --no-install-recommends "${packages[@]}"
 
       - name: Set up Dart
+        if: ${{ inputs.flutter_version == '' }}
         uses: dart-lang/setup-dart@v1
         with:
           sdk: ${{ inputs.dart_version }}
+
+      - name: Set up Flutter
+        if: ${{ inputs.flutter_version != '' }}
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ inputs.flutter_channel }}
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
 
       - name: Configure Pub credentials
         env:
@@ -172,7 +210,14 @@ jobs:
           dart pub token add "$PUB_REGISTRY" --env-var PUB_TOKEN
 
       - name: Resolve Dart workspace
-        run: dart pub get
+        env:
+          FLUTTER_VERSION: ${{ inputs.flutter_version }}
+        run: |
+          if [[ -n "$FLUTTER_VERSION" ]]; then
+            flutter pub get
+          else
+            dart pub get
+          fi
 
       - name: Validate workspace
         if: ${{ inputs.validation_script != '' }}

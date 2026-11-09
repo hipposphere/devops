@@ -68,6 +68,14 @@ labels keep their defaults. Cross-compiling runners must provide the target's
 compiler, SDK, and linker. iOS builds select the device/simulator SDK and target
 iOS 13.0 (macOS builds target 11.0); x64 Windows hosts initialize the MSVC ARM64 cross compiler when needed.
 
+Workspaces that contain Flutter packages set `flutter_version` (and
+`flutter_channel: beta` for a beta release, such as `3.50.0-0.1.pre`). Flutter
+then replaces `dart_version`, resolves the workspace with `flutter pub get`, and
+provides the `dart` and `flutter` commands for the Melos validation script.
+Runners without a preinstalled Android NDK (`ANDROID_NDK_ROOT`), such as
+Blacksmith, set `android_ndk_version` (for example `r28c`) to install one before
+Android native builds.
+
 Native packages are declared in `.hippo/native-assets.json`. Repositories
 without this file skip native work automatically. See
 [`examples/native-assets.json`](examples/native-assets.json) for a complete
